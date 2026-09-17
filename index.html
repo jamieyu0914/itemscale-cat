@@ -1,0 +1,892 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<title>itemscale-dynamodb-to-opensearch</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --paper: #FAF9F5;
+    --paper-raised: #FFFFFF;
+    --ink: #1B2027;
+    --ink-soft: #565F6B;
+    --line: #DEDACB;
+    --line-strong: #C7C2AC;
+    --accent: #0E7C86;
+    --accent-ink: #063E44;
+    --accent-soft: #E4F0EF;
+    --warn: #A8481B;
+    --warn-soft: #FBEEE6;
+    --radius: 3px;
+    --mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+    --sans: 'IBM Plex Sans', system-ui, -apple-system, sans-serif;
+  }
+  :root:not([data-theme="light"]) {
+    @media (prefers-color-scheme: dark) {
+      --paper: #14181C;
+      --paper-raised: #1B2126;
+      --ink: #E9E7DF;
+      --ink-soft: #9BA3AC;
+      --line: #2E353B;
+      --line-strong: #3C444B;
+      --accent: #4FC7C9;
+      --accent-ink: #C9F3F3;
+      --accent-soft: #16333459;
+      --warn: #E4884F;
+      --warn-soft: #3A2416;
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper: #14181C;
+    --paper-raised: #1B2126;
+    --ink: #E9E7DF;
+    --ink-soft: #9BA3AC;
+    --line: #2E353B;
+    --line-strong: #3C444B;
+    --accent: #4FC7C9;
+    --accent-ink: #C9F3F3;
+    --accent-soft: #163334;
+    --warn: #E4884F;
+    --warn-soft: #3A2416;
+  }
+
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--sans);
+    background-image:
+      linear-gradient(var(--line) 1px, transparent 1px),
+      linear-gradient(90deg, var(--line) 1px, transparent 1px);
+    background-size: 32px 32px;
+    background-attachment: fixed;
+  }
+  body { opacity: 0.98; }
+
+  .wrap {
+    max-width: 820px;
+    margin: 0 auto;
+    padding: 48px 20px 96px;
+  }
+
+  header.page {
+    margin-bottom: 40px;
+  }
+  .tickline {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--ink-soft);
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.02em;
+    margin-bottom: 14px;
+  }
+  .tickline .tick { color: var(--accent); }
+  h1 {
+    font-size: 28px;
+    font-weight: 700;
+    line-height: 1.25;
+    margin: 0 0 10px;
+    max-width: 34ch;
+  }
+  header.page p {
+    color: var(--ink-soft);
+    font-size: 15px;
+    line-height: 1.6;
+    max-width: 62ch;
+    margin: 0;
+  }
+
+  section.card {
+    background: var(--paper-raised);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 28px 28px 30px;
+    margin-bottom: 28px;
+    position: relative;
+  }
+  .step-mark {
+    position: absolute;
+    top: -13px;
+    left: 24px;
+    background: var(--paper-raised);
+    border: 1px solid var(--line-strong);
+    color: var(--accent);
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 600;
+    padding: 2px 9px;
+    border-radius: 12px;
+  }
+  h2 {
+    font-size: 18px;
+    font-weight: 700;
+    margin: 6px 0 4px;
+  }
+  .subhead {
+    color: var(--ink-soft);
+    font-size: 13.5px;
+    line-height: 1.55;
+    margin: 0 0 20px;
+    max-width: 58ch;
+  }
+
+  label {
+    display: block;
+    font-size: 12.5px;
+    font-weight: 500;
+    color: var(--ink-soft);
+    margin-bottom: 6px;
+  }
+  textarea, input, select {
+    width: 100%;
+    background: var(--paper);
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius);
+    color: var(--ink);
+    font-family: var(--mono);
+    font-size: 13px;
+    padding: 10px 12px;
+  }
+  textarea:focus, input:focus, select:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+  }
+  textarea {
+    min-height: 150px;
+    resize: vertical;
+    line-height: 1.5;
+  }
+  .field { margin-bottom: 16px; }
+  .grid2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+  .grid3 {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 16px;
+  }
+  @media (max-width: 560px) {
+    .grid2, .grid3 { grid-template-columns: 1fr; }
+  }
+
+  button {
+    font-family: var(--sans);
+    font-weight: 600;
+    font-size: 14px;
+    background: var(--accent);
+    color: #08181A;
+    border: none;
+    border-radius: var(--radius);
+    padding: 11px 20px;
+    cursor: pointer;
+    transition: transform 0.06s ease, filter 0.15s ease;
+  }
+  button:hover { filter: brightness(1.08); }
+  button:active { transform: translateY(1px); }
+  button.ghost {
+    background: transparent;
+    color: var(--accent);
+    border: 1px solid var(--line-strong);
+    font-weight: 500;
+    font-size: 12.5px;
+    padding: 7px 12px;
+  }
+  button.ghost:hover { background: var(--accent-soft); }
+
+  .err {
+    margin-top: 12px;
+    background: var(--warn-soft);
+    color: var(--warn);
+    border: 1px solid var(--warn);
+    border-radius: var(--radius);
+    padding: 10px 14px;
+    font-size: 13px;
+    font-family: var(--mono);
+    display: none;
+  }
+
+  .result {
+    margin-top: 22px;
+    display: none;
+  }
+  .headline-stat {
+    display: flex;
+    align-items: baseline;
+    gap: 14px;
+    flex-wrap: wrap;
+    padding: 16px 18px;
+    background: var(--accent-soft);
+    border-radius: var(--radius);
+    margin-bottom: 16px;
+  }
+  .headline-stat .big {
+    font-family: var(--mono);
+    font-size: 26px;
+    font-weight: 600;
+    color: var(--accent-ink);
+  }
+  .headline-stat .label {
+    font-size: 13px;
+    color: var(--ink-soft);
+  }
+  .stat-row {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 18px;
+  }
+  .pill {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius);
+    padding: 7px 11px;
+    color: var(--ink-soft);
+  }
+  .pill b { color: var(--ink); font-weight: 600; }
+
+  table.breakdown {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12.5px;
+    margin-top: 6px;
+  }
+  table.breakdown th, table.breakdown td {
+    text-align: left;
+    padding: 7px 10px;
+    border-bottom: 1px solid var(--line);
+  }
+  table.breakdown th {
+    color: var(--ink-soft);
+    font-weight: 500;
+    font-size: 11.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  table.breakdown td.name { font-family: var(--mono); }
+  table.breakdown td.bytes { font-family: var(--mono); text-align: right; }
+  table.breakdown td.type {
+    font-family: var(--mono);
+    color: var(--accent-ink);
+    font-size: 11.5px;
+  }
+  .scroller { max-height: 220px; overflow-y: auto; border: 1px solid var(--line); border-radius: var(--radius); }
+
+  .connector {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: -6px 0 26px;
+    padding-left: 4px;
+  }
+  .connector .dash {
+    flex: 1;
+    height: 1px;
+    background: repeating-linear-gradient(90deg, var(--line-strong) 0 6px, transparent 6px 11px);
+  }
+  .connector span {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--ink-soft);
+  }
+
+  .note {
+    font-size: 12.5px;
+    color: var(--ink-soft);
+    line-height: 1.6;
+    margin-top: 16px;
+    padding-top: 14px;
+    border-top: 1px solid var(--line);
+  }
+  .note b { color: var(--ink); }
+
+  h3 {
+    font-size: 15px;
+    font-weight: 700;
+    margin: 0 0 4px;
+  }
+  .gsi-row {
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 16px;
+    margin-bottom: 14px;
+    background: var(--paper);
+  }
+  select[multiple] {
+    padding: 6px 8px;
+  }
+  .gsiIncludeBox { margin-top: 4px; margin-bottom: 0; }
+
+  .cost-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+    margin-top: 4px;
+  }
+  .cost-table td { padding: 8px 4px; border-bottom: 1px solid var(--line); }
+  .cost-table td:last-child { text-align: right; font-family: var(--mono); }
+  .cost-table tr.total td { font-weight: 700; border-bottom: none; padding-top: 12px; font-size: 15px; }
+  .cost-table tr.total td:last-child { color: var(--accent-ink); }
+
+  footer {
+    text-align: center;
+    color: var(--ink-soft);
+    font-size: 12px;
+    margin-top: 8px;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="page">
+    <div class="tickline"><span class="tick">|</span> itemscale-dynamodb-to-opensearch</div>
+    <div class="tickline" style="margin-top:-6px;">量測 <span class="tick">→</span> 換算</div>
+    <h1>把一筆 DynamoDB item 的重量,換算成 OpenSearch 要幾片</h1>
+    <p>先量出真實的 item 大小(依 DynamoDB 官方計費規則的位元組演算法),再把這個平均重量乘上筆數,反推需要多少個 shard、多少個節點、大概多少月費。兩步都是估算,拿來對數量級、不是拿來對到小數點。</p>
+  </header>
+
+  <!-- STEP 1 -->
+  <section class="card">
+    <div class="step-mark">01</div>
+    <h2>量 item 大小</h2>
+    <p class="subhead">貼上一筆資料 —— DynamoDB 低階 API 的型別化 JSON(像 <code>{"id":{"S":"123"}}</code>)或一般 JSON 物件都可以,會自動判斷。</p>
+
+    <div class="field">
+      <label for="ddbInput">DynamoDB item(JSON)</label>
+      <textarea id="ddbInput" spellcheck="false">{
+  "userId": {"S": "u_2f8a91"},
+  "createdAt": {"N": "1758000000"},
+  "isActive": {"BOOL": true},
+  "tags": {"SS": ["vip", "beta", "referral"]},
+  "profile": {
+    "M": {
+      "displayName": {"S": "Chen Wei-Ting"},
+      "bio": {"S": "Backend engineer working on search infra."},
+      "score": {"N": "98.5"}
+    }
+  }
+}</textarea>
+    </div>
+
+    <button onclick="calcItemSize()">量出大小</button>
+    <div class="err" id="ddbErr"></div>
+
+    <div class="result" id="ddbResult">
+      <div class="headline-stat">
+        <div class="big" id="ddbBytes">—</div>
+        <div class="label">bytes / item</div>
+      </div>
+      <div class="stat-row">
+        <div class="pill">WCU / 次寫入:<b id="wcuOut">—</b></div>
+        <div class="pill">RCU / 強一致讀:<b id="rcuStrongOut">—</b></div>
+        <div class="pill">RCU / 最終一致讀:<b id="rcuEventualOut">—</b></div>
+      </div>
+      <div class="scroller">
+        <table class="breakdown">
+          <thead><tr><th>屬性</th><th>推斷型別</th><th style="text-align:right">bytes</th></tr></thead>
+          <tbody id="breakdownBody"></tbody>
+        </table>
+      </div>
+      <div class="note">依 AWS 文件的計費演算法估算:字串/binary 以 UTF-8 位元組計,數字約每 2 位有效數字 1 byte(+1 byte 額外開銷),List/Map/Set 各有 3 bytes 結構開銷。這是被廣泛採用的近似公式,<b>正負一兩個 byte 的落差是正常的</b>,不影響量級判斷。</div>
+
+      <div class="connector" style="margin-top:26px;"><span>加上 GSI →</span><div class="dash"></div></div>
+      <h3>GSI 寫入放大,合併算 WCU</h3>
+      <p class="subhead">每個 GSI 在寫入時都會依它的投影屬性再消耗一次 WCU。設定表格主鍵、每個 GSI 的 partition/sort key 和投影方式,就能看到一次 PutItem 實際總共花多少 WCU。</p>
+
+      <div class="grid2">
+        <div class="field">
+          <label for="tablePk">表格 Partition Key</label>
+          <select id="tablePk" onchange="recalcGsi()"></select>
+        </div>
+        <div class="field">
+          <label for="tableSk">表格 Sort Key(可選)</label>
+          <select id="tableSk" onchange="recalcGsi()"></select>
+        </div>
+      </div>
+
+      <div id="gsiRows"></div>
+      <button class="ghost" type="button" onclick="addGsiRow(); recalcGsi();">+ 新增 GSI</button>
+      <button type="button" onclick="recalcGsi()" style="margin-left:10px;">重新計算合併 WCU</button>
+
+      <div class="result" id="gsiResult" style="margin-top:22px;">
+        <div class="headline-stat">
+          <div class="big" id="combinedWcuOut">—</div>
+          <div class="label">一次寫入合併消耗的 WCU(基本表 + 所有 GSI)</div>
+        </div>
+        <table class="breakdown">
+          <thead><tr><th>來源</th><th>投影方式</th><th style="text-align:right">投影後大小</th><th style="text-align:right">寫入 WCU</th><th style="text-align:right">查詢 RCU(最終一致)</th></tr></thead>
+          <tbody id="gsiTableBody"></tbody>
+        </table>
+        <div class="note">GSI 一定會帶入表格的主鍵屬性,不論投影方式。<b>KEYS_ONLY</b> 只放表格鍵 + GSI 自己的鍵;<b>INCLUDE</b> 再加你勾選的屬性;<b>ALL</b> 視為完整複製一份 item。各來源的 RCU <b>不能直接加總</b>——查表格或查某個 GSI 是互斥的路徑,只有寫入 WCU 才是同一次操作真正合併消耗的量,所以合併只加總 WCU。</div>
+      </div>
+    </div>
+  </section>
+
+  <div class="connector"><span>平均 item 大小 →</span><div class="dash"></div></div>
+
+  <!-- STEP 2 -->
+  <section class="card">
+    <div class="step-mark">02</div>
+    <h2>換算 OpenSearch shard 與月費</h2>
+    <p class="subhead">用平均 item 大小 × 筆數,推回索引總容量,再依目標 shard 大小和 heap 比例,估算需要幾個 shard、幾個節點、大概多少月費。</p>
+
+    <div class="grid2">
+      <div class="field">
+        <label for="avgSize">平均 item 大小(bytes)</label>
+        <input id="avgSize" type="number" value="620">
+      </div>
+      <div class="field">
+        <label for="itemCount">總筆數</label>
+        <input id="itemCount" type="number" value="50000000">
+      </div>
+    </div>
+
+    <div class="grid3">
+      <div class="field">
+        <label for="replicas">replica 數</label>
+        <input id="replicas" type="number" value="1" min="0">
+      </div>
+      <div class="field">
+        <label for="overhead">索引膨脹係數</label>
+        <input id="overhead" type="number" value="1.15" step="0.01">
+      </div>
+      <div class="field">
+        <label for="targetShardGB">目標 shard 大小(GB)</label>
+        <input id="targetShardGB" type="number" value="30">
+      </div>
+    </div>
+
+    <div class="grid2">
+      <div class="field">
+        <label for="heapRatio">每 GB heap 可撐幾個 shard</label>
+        <input id="heapRatio" type="number" value="20">
+      </div>
+      <div class="field">
+        <label for="instanceType">node 機型(估價用,us-east-1 概略價)</label>
+        <select id="instanceType">
+          <option value="0.073|4">t3.medium.search — 2 vCPU / 4GB / $0.073/hr</option>
+          <option value="0.128|8">m6g.large.search — 2 vCPU / 8GB / $0.128/hr</option>
+          <option value="0.167|16" selected>r6g.large.search — 2 vCPU / 16GB / $0.167/hr</option>
+          <option value="0.335|32">r6g.xlarge.search — 4 vCPU / 32GB / $0.335/hr</option>
+          <option value="1.340|128">r6g.4xlarge.search — 16 vCPU / 128GB / $1.340/hr</option>
+        </select>
+      </div>
+    </div>
+
+    <button onclick="calcShards()">換算分片與月費</button>
+    <button class="ghost" onclick="useMeasuredSize()" style="margin-left:10px;">用上面量出的大小填入</button>
+
+    <div class="result" id="osResult">
+      <div class="headline-stat">
+        <div class="big" id="shardOut">—</div>
+        <div class="label">建議 primary shard 數(含 replica 共 <span id="totalShardOut">—</span> 個)</div>
+      </div>
+      <div class="stat-row">
+        <div class="pill">原始資料量:<b id="rawSizeOut">—</b></div>
+        <div class="pill">含索引膨脹:<b id="indexedSizeOut">—</b></div>
+        <div class="pill">含 replica 總儲存:<b id="totalSizeOut">—</b></div>
+      </div>
+      <div class="stat-row">
+        <div class="pill">預估所需 heap:<b id="heapOut">—</b></div>
+        <div class="pill">預估節點數:<b id="nodeOut">—</b></div>
+        <div class="pill">每節點需 EBS:<b id="ebsPerNodeOut">—</b></div>
+      </div>
+
+      <table class="cost-table">
+        <tr><td>Instance 費用(<span id="nodeOutInline">—</span> 節點 × 730 hr)</td><td id="instanceCostOut">—</td></tr>
+        <tr><td>EBS 儲存費用(gp3, $0.122/GB)</td><td id="ebsCostOut">—</td></tr>
+        <tr class="total"><td>估算月費</td><td id="monthlyCostOut">—</td></tr>
+      </table>
+
+      <div class="note">
+        <b>heap 估算</b>用經典「每 GB heap 撐 N 個 shard」的粗略比例,heap 上限抓每節點 RAM 的一半、封頂 32GB(JVM 慣例)。<b>節點數</b>取 heap 需求與此上限反推,沒有另外校正儲存 I/O 或查詢併發需求 —— 高 QPS 場景通常要更多節點,不只是更多 shard。這裡的價格是抓 us-east-1 概略公開費率,實際請以 AWS Pricing Calculator 或帳單為準,不同區域、EBS 類型、UltraWarm 分層都會改變結果。
+      </div>
+    </div>
+  </section>
+
+  <footer>兩段計算彼此獨立,量出來的數字都可以手動覆寫再算。<br><span style="opacity:0.7;">itemscale-dynamodb-to-opensearch</span></footer>
+</div>
+
+<script>
+const TYPE_KEYS = ['S','N','B','BOOL','NULL','M','L','SS','NS','BS'];
+
+function utf8Len(str) {
+  return new TextEncoder().encode(str).length;
+}
+
+function numberSize(numStr) {
+  let s = String(numStr).trim();
+  s = s.replace('-', '').replace('+', '');
+  let [intPart, decPart] = s.split('.');
+  decPart = decPart || '';
+  intPart = intPart.replace(/^0+(?=\d)/, '');
+  decPart = decPart.replace(/0+$/, '');
+  let digits = intPart.length + decPart.length;
+  if (digits === 0) digits = 1;
+  return Math.ceil(digits / 2) + 1;
+}
+
+function base64ByteLength(b64) {
+  try {
+    const clean = b64.replace(/=+$/, '');
+    return Math.floor((clean.length * 3) / 4);
+  } catch (e) { return 0; }
+}
+
+function isTypedWrapper(node) {
+  if (node === null || typeof node !== 'object' || Array.isArray(node)) return false;
+  const keys = Object.keys(node);
+  return keys.length === 1 && TYPE_KEYS.includes(keys[0]);
+}
+
+// Returns {bytes, type}
+function sizeOfValue(node) {
+  if (isTypedWrapper(node)) {
+    const type = Object.keys(node)[0];
+    const val = node[type];
+    switch (type) {
+      case 'S': return { bytes: utf8Len(val), type: 'S' };
+      case 'N': return { bytes: numberSize(val), type: 'N' };
+      case 'B': return { bytes: base64ByteLength(val), type: 'B' };
+      case 'BOOL': return { bytes: 1, type: 'BOOL' };
+      case 'NULL': return { bytes: 1, type: 'NULL' };
+      case 'M': {
+        let total = 3;
+        for (const k in val) total += utf8Len(k) + sizeOfValue(val[k]).bytes;
+        return { bytes: total, type: 'M' };
+      }
+      case 'L': {
+        let total = 3;
+        for (const item of val) total += sizeOfValue(item).bytes;
+        return { bytes: total, type: 'L' };
+      }
+      case 'SS': {
+        let total = 3;
+        for (const s of val) total += utf8Len(s);
+        return { bytes: total, type: 'SS' };
+      }
+      case 'NS': {
+        let total = 3;
+        for (const n of val) total += numberSize(n);
+        return { bytes: total, type: 'NS' };
+      }
+      case 'BS': {
+        let total = 3;
+        for (const b of val) total += base64ByteLength(b);
+        return { bytes: total, type: 'BS' };
+      }
+    }
+  }
+  // plain JSON inference
+  if (node === null) return { bytes: 1, type: 'NULL' };
+  if (typeof node === 'string') return { bytes: utf8Len(node), type: 'S' };
+  if (typeof node === 'number') return { bytes: numberSize(String(node)), type: 'N' };
+  if (typeof node === 'boolean') return { bytes: 1, type: 'BOOL' };
+  if (Array.isArray(node)) {
+    let total = 3;
+    for (const item of node) total += sizeOfValue(item).bytes;
+    return { bytes: total, type: 'L' };
+  }
+  if (typeof node === 'object') {
+    let total = 3;
+    for (const k in node) total += utf8Len(k) + sizeOfValue(node[k]).bytes;
+    return { bytes: total, type: 'M' };
+  }
+  return { bytes: 0, type: '?' };
+}
+
+let lastMeasuredSize = null;
+let lastMeasuredRows = [];
+let gsiRowCounter = 0;
+
+function calcWcu(bytes) {
+  return Math.max(1, Math.ceil(bytes / 1024));
+}
+function calcRcu(bytes) {
+  const strong = Math.max(1, Math.ceil(bytes / 4096));
+  const eventual = Math.max(0.5, Math.ceil(strong / 2 * 10) / 10);
+  return { strong, eventual };
+}
+
+function calcItemSize() {
+  const errEl = document.getElementById('ddbErr');
+  const resEl = document.getElementById('ddbResult');
+  errEl.style.display = 'none';
+  resEl.style.display = 'none';
+
+  let parsed;
+  try {
+    parsed = JSON.parse(document.getElementById('ddbInput').value);
+  } catch (e) {
+    errEl.textContent = '這不是合法的 JSON:' + e.message;
+    errEl.style.display = 'block';
+    return;
+  }
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+    errEl.textContent = '請貼一個 item(最外層應該是一個物件,key 是屬性名稱)。';
+    errEl.style.display = 'block';
+    return;
+  }
+
+  let total = 0;
+  const rows = [];
+  for (const key in parsed) {
+    const nameBytes = utf8Len(key);
+    const { bytes, type } = sizeOfValue(parsed[key]);
+    total += nameBytes + bytes;
+    rows.push({ key, type, bytes: nameBytes + bytes });
+  }
+
+  lastMeasuredSize = total;
+  lastMeasuredRows = rows;
+
+  const wcu = calcWcu(total);
+  const rcu = calcRcu(total);
+  document.getElementById('ddbBytes').textContent = total.toLocaleString();
+  document.getElementById('wcuOut').textContent = wcu;
+  document.getElementById('rcuStrongOut').textContent = rcu.strong;
+  document.getElementById('rcuEventualOut').textContent = rcu.eventual;
+
+  const tbody = document.getElementById('breakdownBody');
+  tbody.innerHTML = '';
+  rows.sort((a, b) => b.bytes - a.bytes);
+  for (const r of rows) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td class="name">${escapeHtml(r.key)}</td><td class="type">${r.type}</td><td class="bytes">${r.bytes.toLocaleString()}</td>`;
+    tbody.appendChild(tr);
+  }
+
+  resEl.style.display = 'block';
+
+  refreshGsiKeyOptions();
+  recalcGsi();
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function optionsHtml(selected) {
+  let html = '<option value="">(無)</option>';
+  for (const r of lastMeasuredRows) {
+    html += `<option value="${escapeHtml(r.key)}" ${r.key === selected ? 'selected' : ''}>${escapeHtml(r.key)}</option>`;
+  }
+  return html;
+}
+
+function refreshGsiKeyOptions() {
+  const tablePk = document.getElementById('tablePk');
+  const tableSk = document.getElementById('tableSk');
+  const prevPk = tablePk.value, prevSk = tableSk.value;
+  tablePk.innerHTML = optionsHtml(prevPk);
+  tableSk.innerHTML = optionsHtml(prevSk);
+
+  document.querySelectorAll('.gsi-row').forEach(row => {
+    const pkSel = row.querySelector('.gsiPk');
+    const skSel = row.querySelector('.gsiSk');
+    const incSel = row.querySelector('.gsiInclude');
+    const prevPkV = pkSel.value, prevSkV = skSel.value;
+    const prevInc = Array.from(incSel.selectedOptions).map(o => o.value);
+    pkSel.innerHTML = optionsHtml(prevPkV);
+    skSel.innerHTML = optionsHtml(prevSkV);
+    incSel.innerHTML = lastMeasuredRows
+      .map(r => `<option value="${escapeHtml(r.key)}" ${prevInc.includes(r.key) ? 'selected' : ''}>${escapeHtml(r.key)}</option>`)
+      .join('');
+  });
+}
+
+function addGsiRow(initial) {
+  initial = initial || {};
+  gsiRowCounter++;
+  const id = gsiRowCounter;
+  const div = document.createElement('div');
+  div.className = 'gsi-row';
+  div.dataset.id = id;
+  const projection = initial.projection || 'INCLUDE';
+  const includeOptions = lastMeasuredRows.map(r =>
+    `<option value="${escapeHtml(r.key)}" ${(initial.include || []).includes(r.key) ? 'selected' : ''}>${escapeHtml(r.key)}</option>`
+  ).join('');
+
+  div.innerHTML = `
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+      <strong style="font-size:13px;">GSI</strong>
+      <button class="ghost" type="button" onclick="removeGsiRow(${id})">移除</button>
+    </div>
+    <div class="grid3">
+      <div class="field"><label>Partition Key</label><select class="gsiPk" onchange="recalcGsi()">${optionsHtml(initial.pk || '')}</select></div>
+      <div class="field"><label>Sort Key(可選)</label><select class="gsiSk" onchange="recalcGsi()">${optionsHtml(initial.sk || '')}</select></div>
+      <div class="field"><label>投影方式</label>
+        <select class="gsiProjection" onchange="toggleIncludeBox(this); recalcGsi();">
+          <option value="ALL" ${projection === 'ALL' ? 'selected' : ''}>ALL(完整複製)</option>
+          <option value="KEYS_ONLY" ${projection === 'KEYS_ONLY' ? 'selected' : ''}>KEYS_ONLY(只放鍵)</option>
+          <option value="INCLUDE" ${projection === 'INCLUDE' ? 'selected' : ''}>INCLUDE(自選屬性)</option>
+        </select>
+      </div>
+    </div>
+    <div class="field gsiIncludeBox" style="display:${projection === 'INCLUDE' ? 'block' : 'none'};">
+      <label>額外投影屬性(可多選,Ctrl/Cmd 點選多個)</label>
+      <select class="gsiInclude" multiple size="4" onchange="recalcGsi()">${includeOptions}</select>
+    </div>
+  `;
+  document.getElementById('gsiRows').appendChild(div);
+}
+
+function removeGsiRow(id) {
+  const row = document.querySelector(`.gsi-row[data-id="${id}"]`);
+  if (row) row.remove();
+  recalcGsi();
+}
+
+function toggleIncludeBox(selectEl) {
+  const row = selectEl.closest('.gsi-row');
+  row.querySelector('.gsiIncludeBox').style.display = selectEl.value === 'INCLUDE' ? 'block' : 'none';
+}
+
+function recalcGsi() {
+  if (!lastMeasuredRows.length) return;
+  const rowByKey = {};
+  for (const r of lastMeasuredRows) rowByKey[r.key] = r.bytes;
+
+  const tablePk = document.getElementById('tablePk').value;
+  const tableSk = document.getElementById('tableSk').value;
+
+  const results = [];
+  const baseWcu = calcWcu(lastMeasuredSize);
+  const baseRcu = calcRcu(lastMeasuredSize);
+  results.push({ source: '基本表', projection: '完整 item', size: lastMeasuredSize, wcu: baseWcu, rcuEventual: baseRcu.eventual });
+
+  let combinedWcu = baseWcu;
+  let gsiIndex = 0;
+
+  document.querySelectorAll('.gsi-row').forEach(row => {
+    gsiIndex++;
+    const pk = row.querySelector('.gsiPk').value;
+    const sk = row.querySelector('.gsiSk').value;
+    const projection = row.querySelector('.gsiProjection').value;
+    const includeSel = row.querySelector('.gsiInclude');
+    const includeAttrs = Array.from(includeSel.selectedOptions).map(o => o.value);
+
+    let size, projLabel;
+    if (projection === 'ALL') {
+      size = lastMeasuredSize;
+      projLabel = 'ALL';
+    } else {
+      const attrsSet = new Set();
+      if (tablePk) attrsSet.add(tablePk);
+      if (tableSk) attrsSet.add(tableSk);
+      if (pk) attrsSet.add(pk);
+      if (sk) attrsSet.add(sk);
+      if (projection === 'INCLUDE') {
+        includeAttrs.forEach(a => attrsSet.add(a));
+        projLabel = 'INCLUDE';
+      } else {
+        projLabel = 'KEYS_ONLY';
+      }
+      size = 0;
+      attrsSet.forEach(a => { size += rowByKey[a] || 0; });
+    }
+
+    const wcu = calcWcu(size);
+    const rcu = calcRcu(size);
+    combinedWcu += wcu;
+    results.push({ source: `GSI ${gsiIndex}`, projection: projLabel, size, wcu, rcuEventual: rcu.eventual });
+  });
+
+  document.getElementById('combinedWcuOut').textContent = combinedWcu;
+  const tbody = document.getElementById('gsiTableBody');
+  tbody.innerHTML = '';
+  for (const r of results) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td class="name">${escapeHtml(r.source)}</td><td class="type">${r.projection}</td><td class="bytes">${r.size.toLocaleString()} B</td><td class="bytes">${r.wcu}</td><td class="bytes">${r.rcuEventual}</td>`;
+    tbody.appendChild(tr);
+  }
+  document.getElementById('gsiResult').style.display = 'block';
+}
+
+function useMeasuredSize() {
+  if (lastMeasuredSize === null) {
+    calcItemSize();
+  }
+  if (lastMeasuredSize !== null) {
+    document.getElementById('avgSize').value = lastMeasuredSize;
+  }
+}
+
+function fmtBytes(bytes) {
+  const units = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
+  let i = 0;
+  let v = bytes;
+  while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
+  return v.toFixed(v < 10 && i > 0 ? 2 : 1) + ' ' + units[i];
+}
+
+function fmtUsd(n) {
+  return '$' + n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function calcShards() {
+  const avgSize = parseFloat(document.getElementById('avgSize').value) || 0;
+  const itemCount = parseFloat(document.getElementById('itemCount').value) || 0;
+  const replicas = Math.max(0, parseFloat(document.getElementById('replicas').value) || 0);
+  const overhead = parseFloat(document.getElementById('overhead').value) || 1;
+  const targetShardGB = parseFloat(document.getElementById('targetShardGB').value) || 30;
+  const heapRatio = parseFloat(document.getElementById('heapRatio').value) || 20;
+  const [priceStr, ramStr] = document.getElementById('instanceType').value.split('|');
+  const hourlyPrice = parseFloat(priceStr);
+  const ramGB = parseFloat(ramStr);
+
+  const rawBytes = avgSize * itemCount;
+  const indexedBytes = rawBytes * overhead;
+  const totalWithReplicas = indexedBytes * (1 + replicas);
+
+  const targetShardBytes = targetShardGB * 1024 * 1024 * 1024;
+  const primaryShards = Math.max(1, Math.ceil(indexedBytes / targetShardBytes));
+  const totalShards = primaryShards * (1 + replicas);
+
+  const heapNeededGB = totalShards / heapRatio;
+  const heapPerNode = Math.min(ramGB / 2, 32);
+  const nodesByHeap = Math.max(1, Math.ceil(heapNeededGB / heapPerNode));
+
+  const totalGB = totalWithReplicas / (1024 * 1024 * 1024);
+  const ebsPerNode = totalGB / nodesByHeap;
+
+  const instanceCost = nodesByHeap * hourlyPrice * 730;
+  const ebsCost = totalGB * 0.122;
+  const monthlyCost = instanceCost + ebsCost;
+
+  document.getElementById('shardOut').textContent = primaryShards.toLocaleString();
+  document.getElementById('totalShardOut').textContent = totalShards.toLocaleString();
+  document.getElementById('rawSizeOut').textContent = fmtBytes(rawBytes);
+  document.getElementById('indexedSizeOut').textContent = fmtBytes(indexedBytes);
+  document.getElementById('totalSizeOut').textContent = fmtBytes(totalWithReplicas);
+  document.getElementById('heapOut').textContent = heapNeededGB.toFixed(1) + ' GB';
+  document.getElementById('nodeOut').textContent = nodesByHeap;
+  document.getElementById('nodeOutInline').textContent = nodesByHeap;
+  document.getElementById('ebsPerNodeOut').textContent = fmtBytes(ebsPerNode * 1024 * 1024 * 1024);
+  document.getElementById('instanceCostOut').textContent = fmtUsd(instanceCost) + ' /月';
+  document.getElementById('ebsCostOut').textContent = fmtUsd(ebsCost) + ' /月';
+  document.getElementById('monthlyCostOut').textContent = fmtUsd(monthlyCost) + ' /月';
+
+  document.getElementById('osResult').style.display = 'block';
+}
+
+// Run once on load for a live starting example
+window.addEventListener('DOMContentLoaded', () => {
+  calcItemSize();
+  document.getElementById('tablePk').value = 'userId';
+  addGsiRow({ pk: 'isActive', sk: 'createdAt', projection: 'INCLUDE', include: ['profile'] });
+  recalcGsi();
+  calcShards();
+});
+</script>
+</body>
+</html>
